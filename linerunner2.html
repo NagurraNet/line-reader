@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>LineRunner — Private Rehearsal Partner</title>
+<style>
+  /* ============ PROMPT BOOK DESIGN TOKENS ============
+     paper:   #F7F4EC  aged script page
+     ink:     #26221C  typewritten text
+     pencil:  #B5342A  red-pencil corrections (stage manager's mark)
+     blue:    #2E4A6B  blue-pencil actions / chrome
+     standby: #D99A2B  amber cue light
+     go:      #3E7C4F  green cue light
+  */
+  :root {
+    --paper: #F7F4EC;
+    --paper-dim: #EFEAE0;
+    --ink: #26221C;
+    --ink-soft: #6E6657;
+    --pencil: #B5342A;
+    --blue: #2E4A6B;
+    --standby: #D99A2B;
+    --go: #3E7C4F;
+    --rule: #D8D1C2;
+    --script-font: "American Typewriter", "Courier Prime", "Courier New", Courier, monospace;
+    --ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--ui-font);
+    background: var(--paper);
+    color: var(--ink);
+    /* prompt-book margin rule down the left edge */
+    background-image: linear-gradient(to right, transparent 26px, var(--pencil) 26px, var(--pencil) 27px, transparent 27px);
+    background-repeat: repeat-y;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .screen { display: none; min-height: 100dvh; flex-direction: column; max-width: 680px; margin: 0 auto; padding: 16px 18px 24px 40px; }
+  .screen.active { display: flex; }
+
+  header.app { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 0 14px; border-bottom: 1px solid var(--rule); margin-bottom: 16px; }
+  .wordmark { font-family: var(--script-font); font-size: 20px; letter-spacing: 0.02em; }
+  .wordmark .act { color: var(--pencil); }
+  .tagline { font-size: 11px; color: var(--ink-soft); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  h2 { font-family: var(--script-font); font-size: 17px; font-weight: 600; margin: 18px 0 8px; }
+  p.help { font-size: 13px; color: var(--ink-soft); line-height: 1.45; margin-bottom: 10px; }
+
+  textarea, select, input[type="number"] {
+    width: 100%; font-family: var(--script-font); font-size: 14px;
+    background: #FFFEFA; color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 10px;
+  }
+  textarea { min-height: 170px; line-height: 1.5; resize: vertical; }
+  textarea:focus, select:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  label.field { display: block; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); margin: 14px 0 5px; }
+
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row > * { flex: 1; }
+
+  button {
+    font-family: var(--ui-font); font-size: 15px; font-weight: 600;
+    border: none; border-radius: 8px; padding: 13px 16px; cursor: pointer;
+    color: #fff; background: var(--blue);
+  }
+  button.secondary { background: transparent; color: var(--blue); border: 1.5px solid var(--blue); }
+  button.danger { background: transparent; color: var(--pencil); border: 1.5px solid var(--pencil); }
+  button.quiet { background: transparent; color: var(--ink-soft); border: 1px solid var(--rule); font-weight: 500; }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .btnbar { display: flex; gap: 10px; margin-top: 14px; }
+  .btnbar button { flex: 1; }
+
+  /* ---- cue light: the signature element ---- */
+  .cuelight-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 10px 0 4px; }
+  .cuelight {
+    width: 64px; height: 64px; border-radius: 50%;
+    border: 2px solid var(--rule); background: var(--paper-dim);
+    transition: background 0.25s, box-shadow 0.25s, border-color 0.25s;
+  }
+  .cuelight.standby { background: var(--standby); border-color: var(--standby); box-shadow: 0 0 22px rgba(217,154,43,0.55); }
+  .cuelight.go { background: var(--go); border-color: var(--go); box-shadow: 0 0 26px rgba(62,124,79,0.6); animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+  @media (prefers-reduced-motion: reduce) { .cuelight.go { animation: none; } }
+  .cuelabel { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); }
+
+  /* ---- script display ---- */
+  .pagearea { flex: 1; overflow-y: auto; padding: 4px 0 8px; }
+  .speaker-tag { font-family: var(--script-font); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); margin: 14px 0 3px; }
+  .speaker-tag.me { color: var(--blue); }
+  .line-text { font-family: var(--script-font); font-size: 17px; line-height: 1.55; }
+  .line-text.partner { }
+  .line-text.mine-hidden { color: var(--ink-soft); font-style: italic; font-size: 14px; }
+  .live-transcript { font-family: var(--script-font); font-size: 15px; color: var(--blue); min-height: 1.5em; margin-top: 6px; opacity: 0.85; }
+
+  /* ---- proofreader diff markup ---- */
+  .diff { font-family: var(--script-font); font-size: 17px; line-height: 1.8; }
+  .diff .ok { }
+  .diff .missed { color: var(--pencil); text-decoration: underline; text-decoration-style: dashed; text-underline-offset: 4px; }
+  .diff .wrong { color: var(--pencil); text-decoration: line-through; }
+  .diff .said { color: var(--blue); font-size: 14px; }
+  .diff .extra { color: var(--blue); font-style: italic; opacity: 0.8; }
+  .scorechip {
+    display: inline-block; font-family: var(--script-font); font-size: 14px; font-weight: 700;
+    padding: 3px 12px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .scorechip.pass { background: rgba(62,124,79,0.14); color: var(--go); border: 1px solid var(--go); }
+  .scorechip.fail { background: rgba(181,52,42,0.10); color: var(--pencil); border: 1px solid var(--pencil); }
+
+  .legend { font-size: 11.5px; color: var(--ink-soft); margin-top: 8px; line-height: 1.6; }
+
+  .statusline { font-size: 13px; color: var(--ink-soft); text-align: center; min-height: 1.3em; margin: 4px 0; }
+  .progress { font-size: 12px; color: var(--ink-soft); text-align: right; font-family: var(--script-font); }
+
+  /* summary table */
+  table.summary { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  table.summary td { padding: 7px 6px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  table.summary td.num { font-family: var(--script-font); text-align: right; white-space: nowrap; }
+  td.num.pass { color: var(--go); } td.num.fail { color: var(--pencil); font-weight: 700; }
+
+  .notice { font-size: 12.5px; line-height: 1.5; background: var(--paper-dim); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; color: var(--ink-soft); margin-top: 16px; }
+  .err { color: var(--pencil); font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+  details { margin-top: 12px; } summary { font-size: 13px; color: var(--blue); cursor: pointer; }
+</style>
+</head>
+<body>
+
+<!-- ================= SETUP SCREEN ================= -->
+<section class="screen active" id="scr-setup">
+  <header class="app">
+    <div class="wordmark">Line<span class="act">Runner</span></div>
+    <div class="tagline">Private rehearsal</div>
+  </header>
+
+  <h2>1 · Paste your script</h2>
+  <p class="help">One line per speech, in the form <strong>NAME: text</strong>. Lines without a name continue the previous speech. Everything stays on this device.</p>
+  <textarea id="scriptInput" placeholder="EAST: Whence come you?&#10;WEST: From the place of beginnings.&#10;EAST: What is your purpose here?"></textarea>
+
+  <label class="field" for="roleSelect">2 · I am reading the part of</label>
+  <select id="roleSelect"><option value="">— paste a script first —</option></select>
+
+  <details>
+    <summary>Settings</summary>
+    <p class="help" style="margin-top:14px">Grading is exact: a line must be word-for-word perfect to auto-advance. Use “Next line” to override if dictation mishears you.</p>
+    <label class="field" for="voiceSelect">Partner voice</label>
+    <select id="voiceSelect"></select>
+    <label class="field" for="rateInput">Partner speaking rate (0.5–1.5)</label>
+    <input type="number" id="rateInput" min="0.5" max="1.5" step="0.1" value="0.95">
+  </details>
+
+  <div class="btnbar">
+    <button id="startBtn">Begin rehearsal</button>
+  </div>
+  <div class="btnbar">
+    <button class="quiet" id="saveBtn">Save script on device</button>
+    <button class="quiet" id="loadBtn">Load saved</button>
+    <button class="danger" id="wipeBtn">Wipe all data</button>
+  </div>
+  <div class="err" id="setupErr"></div>
+
+  <div class="notice">
+    <strong>Privacy:</strong> this page makes zero network requests. Script text lives only in this browser's local storage and is removed by "Wipe all data." Speech-to-text uses your iPhone's built-in dictation (processed on-device on modern iPhones). Spoken partner lines use the built-in iOS voice — nothing is uploaded.
+  </div>
+</section>
+
+<!-- ================= REHEARSAL SCREEN ================= -->
+<section class="screen" id="scr-run">
+  <header class="app">
+    <div class="wordmark">Line<span class="act">Runner</span></div>
+    <div class="progress" id="progressLabel"></div>
+  </header>
+
+  <div class="cuelight-wrap">
+    <div class="cuelight" id="cueLight"></div>
+    <div class="cuelabel" id="cueLabel">Ready</div>
+  </div>
+  <div class="statusline" id="statusLine"></div>
+
+  <div class="pagearea" id="pageArea"></div>
+
+  <div class="btnbar">
+    <button id="promptBtn" class="secondary">Prompt&nbsp;·&nbsp;“line”</button>
+    <button id="mainBtn">Start</button>
+  </div>
+  <div class="btnbar">
+    <button class="quiet" id="retryBtn" disabled>Retry line</button>
+    <button class="quiet" id="skipBtn" disabled>Next line</button>
+    <button class="quiet" id="endBtn">End</button>
+  </div>
+  <div class="legend">Markup: <span style="color:var(--pencil);text-decoration:underline dashed;text-underline-offset:3px">missed word</span> · <span style="color:var(--pencil);text-decoration:line-through">substituted</span> <span style="color:var(--blue)">(what you said)</span> · <span style="color:var(--blue);font-style:italic">added word</span></div>
+</section>
+
+<!-- ================= SUMMARY SCREEN ================= -->
+<section class="screen" id="scr-summary">
+  <header class="app">
+    <div class="wordmark">Line<span class="act">Runner</span></div>
+    <div class="tagline">Session report</div>
+  </header>
+  <h2 id="summaryHeadline"></h2>
+  <table class="summary" id="summaryTable"></table>
+  <div class="btnbar">
+    <button id="againBtn">Run it again</button>
+    <button class="secondary" id="backToSetupBtn">Back to setup</button>
+  </div>
+</section>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ====================== STATE ====================== */
+  const S = {
+    lines: [],          // [{speaker, text}]
+    myRole: "",
+    idx: 0,             // current line index
+    phase: "idle",      // idle | partner | listening | review | done
+    promptLevel: 0,     // escalating coach levels per line
+    attempts: {},       // idx -> {best:%, tries:n}
+    results: [],        // [{idx, accuracy, tries}]
+    threshold: 0.9,
+    rate: 0.95,
+    voiceURI: "",
+    recog: null,
+    finalTranscript: "",
+    listening: false,
+    speaking: false,
+    autoAdvanceTimer: null
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  /* ====================== PARSER ====================== */
+  function parseScript(raw) {
+    const lines = [];
+    raw.split(/\r?\n/).forEach((row) => {
+      const t = row.trim();
+      if (!t) return;
+      const m = t.match(/^([A-Za-z][\w .'-]{0,30}):\s*(.+)$/);
+      if (m) lines.push({ speaker: m[1].trim().toUpperCase(), text: m[2].trim() });
+      else if (lines.length) lines[lines.length - 1].text += " " + t;
+    });
+    return lines;
+  }
+
+  /* ====================== MATCHING ====================== */
+  function normWords(s) {
+    return s.toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .replace(/[^a-z0-9' ]+/g, " ")
+      .split(/\s+/).filter(Boolean);
+  }
+  // word-level alignment (Levenshtein with backtrace)
+  function alignWords(exp, got) {
+    const n = exp.length, m = got.length;
+    const d = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = 0; i <= n; i++) d[i][0] = i;
+    for (let j = 0; j <= m; j++) d[0][j] = j;
+    for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+      const c = exp[i - 1] === got[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+    }
+    const ops = [];
+    let i = n, j = m;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && d[i][j] === d[i - 1][j - 1] + (exp[i - 1] === got[j - 1] ? 0 : 1)) {
+        ops.unshift(exp[i - 1] === got[j - 1] ? { op: "ok", e: exp[i - 1] } : { op: "sub", e: exp[i - 1], g: got[j - 1] });
+        i--; j--;
+      } else if (i > 0 && d[i][j] === d[i - 1][j] + 1) { ops.unshift({ op: "del", e: exp[i - 1] }); i--; }
+      else { ops.unshift({ op: "ins", g: got[j - 1] }); j--; }
+    }
+    const okCount = ops.filter(o => o.op === "ok").length;
+    const errCount = ops.filter(o => o.op !== "ok").length; // sub + del + ins
+    // denominator counts every script word plus every added word, so an
+    // insertion can never score 100%. accuracy = correct / (correct + errors).
+    const denom = okCount + errCount;
+    return { ops, accuracy: denom ? okCount / denom : 1 };
+  }
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function renderDiff(ops) {
+    return ops.map((o) => {
+      if (o.op === "ok") return `<span class="ok">${esc(o.e)}</span>`;
+      if (o.op === "del") return `<span class="missed">${esc(o.e)}</span>`;
+      if (o.op === "sub") return `<span class="wrong">${esc(o.e)}</span> <span class="said">(${esc(o.g)})</span>`;
+      return `<span class="extra">+${esc(o.g)}</span>`;
+    }).join(" ");
+  }
+
+  /* ====================== SPEECH OUT ====================== */
+  function speak(text, cb) {
+    stopListening();
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = S.rate;
+    const v = window.speechSynthesis.getVoices().find(v => v.voiceURI === S.voiceURI);
+    if (v) u.voice = v;
+    S.speaking = true;
+    u.onend = u.onerror = () => { S.speaking = false; if (cb) cb(); };
+    window.speechSynthesis.speak(u);
+  }
+
+  /* ====================== SPEECH IN ====================== */
+  function buildRecognizer() {
+    if (!SR) return null;
+    const r = new SR();
+    r.continuous = true;
+    r.interimResults = true;
+    r.lang = "en-US";
+    r.onresult = (ev) => {
+      let interim = "";
+      for (let k = ev.resultIndex; k < ev.results.length; k++) {
+        const res = ev.results[k];
+        if (res.isFinal) S.finalTranscript += " " + res[0].transcript;
+        else interim += res[0].transcript;
+      }
+      const live = (S.finalTranscript + " " + interim).trim();
+      const lt = $("liveTranscript");
+      if (lt) lt.textContent = live;
+      // voice command: "line" / "prompt" alone triggers a coach cue
+      const w = normWords(live);
+      if (w.length >= 1 && w.length <= 2 && (w[0] === "line" || w[0] === "prompt")) {
+        S.finalTranscript = "";
+        givePrompt();
+      }
+    };
+    r.onend = () => {
+      if (S.listening) { try { r.start(); } catch (_) {} } // iOS auto-stops; restart while in listening phase
+    };
+    r.onerror = (e) => {
+      if (e.error === "not-allowed") {
+        setStatus("Microphone blocked — allow mic access in Safari settings.");
+        S.listening = false; setCue("off", "Ready");
+      }
+    };
+    return r;
+  }
+  function startListening() {
+    if (!S.recog) S.recog = buildRecognizer();
+    if (!S.recog) { setStatus("Speech recognition unavailable in this browser."); return; }
+    S.finalTranscript = "";
+    S.listening = true;
+    try { S.recog.start(); } catch (_) {}
+    setCue("go", "Your line — speak");
+  }
+  function stopListening() {
+    S.listening = false;
+    if (S.recog) { try { S.recog.stop(); } catch (_) {} }
+  }
+
+  /* ====================== UI HELPERS ====================== */
+  function show(id) { document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); $(id).classList.add("active"); }
+  function setCue(state, label) {
+    const c = $("cueLight");
+    c.className = "cuelight" + (state === "off" ? "" : " " + state);
+    $("cueLabel").textContent = label;
+  }
+  function setStatus(t) { $("statusLine").textContent = t; }
+  function progressLabel() { $("progressLabel").textContent = `Line ${S.idx + 1} of ${S.lines.length}`; }
+
+  function renderPage(html) { const p = $("pageArea"); p.innerHTML = html; p.scrollTop = p.scrollHeight; }
+
+  /* ====================== REHEARSAL FLOW ====================== */
+  function advance() {
+    S.promptLevel = 0;
+    $("retryBtn").disabled = true;
+    $("skipBtn").disabled = true;
+    if (S.idx >= S.lines.length) return finishSession();
+    progressLabel();
+    const L = S.lines[S.idx];
+    if (L.speaker === S.myRole) {
+      // my line: hide text, listen
+      S.phase = "listening";
+      renderPage(
+        `<div class="speaker-tag me">${esc(L.speaker)} (you)</div>` +
+        `<div class="line-text mine-hidden">— your line, from memory —</div>` +
+        `<div class="live-transcript" id="liveTranscript"></div>`
+      );
+      setStatus(`Say your line. Say “line” or tap Prompt for a cue. Tap Done when finished.`);
+      $("mainBtn").textContent = "Done — grade it";
+      startListening();
+    } else {
+      // partner line: speak it
+      S.phase = "partner";
+      setCue("standby", `${L.speaker} speaking`);
+      setStatus("");
+      renderPage(
+        `<div class="speaker-tag">${esc(L.speaker)}</div>` +
+        `<div class="line-text partner">${esc(L.text)}</div>`
+      );
+      $("mainBtn").textContent = "Skip ahead";
+      speak(L.text, () => {
+        S.idx++;
+        advance();
+      });
+    }
+  }
+
+  function gradeMyLine() {
+    stopListening();
+    setCue("off", "Grading");
+    const L = S.lines[S.idx];
+    const exp = normWords(L.text);
+    const got = normWords(S.finalTranscript);
+    const { ops, accuracy } = alignWords(exp, got);
+    const pct = Math.round(accuracy * 100);
+    const pass = pct === 100; // exact match required — any mark blocks advancement
+
+    const a = S.attempts[S.idx] || { best: 0, tries: 0 };
+    a.tries++; a.best = Math.max(a.best, pct);
+    S.attempts[S.idx] = a;
+
+    S.phase = "review";
+    renderPage(
+      `<div class="speaker-tag me">${esc(L.speaker)} (you)</div>` +
+      `<div><span class="scorechip ${pass ? "pass" : "fail"}">${pct}% · attempt ${a.tries}</span></div>` +
+      `<div class="diff">${renderDiff(ops)}</div>`
+    );
+    if (pass) {
+      setCue("go", "Word-perfect");
+      setStatus("Word-perfect — advancing…");
+      $("mainBtn").textContent = "Continue";
+      $("retryBtn").disabled = false;
+      $("skipBtn").disabled = false;
+      // auto-advance after a beat so the green chip is visible
+      S.autoAdvanceTimer = setTimeout(() => { if (S.phase === "review") recordAndNext(); }, 1100);
+    } else {
+      setCue("off", "Not yet");
+      setStatus("Errors marked in red. Retry the line — or tap Next line to override if dictation misheard you.");
+      $("mainBtn").textContent = "Retry line";
+      $("retryBtn").disabled = false;
+      $("skipBtn").disabled = false; // manual override stays available for dictation false-reds
+    }
+  }
+
+  function clearAutoAdvance() {
+    if (S.autoAdvanceTimer) { clearTimeout(S.autoAdvanceTimer); S.autoAdvanceTimer = null; }
+  }
+
+  function recordAndNext() {
+    clearAutoAdvance();
+    const a = S.attempts[S.idx] || { best: 0, tries: 0 };
+    S.results.push({ idx: S.idx, accuracy: a.best, tries: a.tries });
+    S.idx++;
+    advance();
+  }
+
+  function retryLine() {
+    clearAutoAdvance();
+    S.phase = "listening";
+    const L = S.lines[S.idx];
+    renderPage(
+      `<div class="speaker-tag me">${esc(L.speaker)} (you)</div>` +
+      `<div class="line-text mine-hidden">— retry, from memory —</div>` +
+      `<div class="live-transcript" id="liveTranscript"></div>`
+    );
+    $("mainBtn").textContent = "Done — grade it";
+    setStatus("Take it again.");
+    startListening();
+  }
+
+  /* coaching: escalating prompt levels */
+  function givePrompt() {
+    if (S.phase !== "listening") return;
+    const L = S.lines[S.idx];
+    const words = L.text.split(/\s+/);
+    S.promptLevel++;
+    let cue, label;
+    if (S.promptLevel === 1) { cue = words.slice(0, 2).join(" "); label = "Opening words"; }
+    else if (S.promptLevel === 2) { cue = words.slice(0, Math.min(6, words.length)).join(" "); label = "Opening phrase"; }
+    else { cue = L.text; label = "Full line"; }
+    setStatus(`Prompt ${S.promptLevel} — ${label}.`);
+    const wasListening = S.listening;
+    speak(cue, () => { if (wasListening) startListening(); });
+  }
+
+  function finishSession() {
+    S.phase = "done";
+    clearAutoAdvance();
+    stopListening();
+    window.speechSynthesis.cancel();
+    const mine = S.results;
+    const avg = mine.length ? Math.round(mine.reduce((s, r) => s + r.accuracy, 0) / mine.length) : 0;
+    const perfect = mine.filter(r => r.accuracy === 100).length;
+    $("summaryHeadline").textContent = `Average ${avg}% · ${perfect}/${mine.length} word-perfect`;
+    const rows = mine.map(r => {
+      const L = S.lines[r.idx];
+      const cls = r.accuracy === 100 ? "pass" : "fail";
+      const preview = L.text.length > 60 ? L.text.slice(0, 57) + "…" : L.text;
+      return `<tr><td>${esc(preview)}</td><td class="num ${cls}">${r.accuracy}%</td><td class="num">×${r.tries}</td></tr>`;
+    }).join("");
+    $("summaryTable").innerHTML = rows || `<tr><td>No lines of yours were reached.</td></tr>`;
+    show("scr-summary");
+  }
+
+  /* ====================== SETUP WIRES ====================== */
+  function refreshRoles() {
+    const lines = parseScript($("scriptInput").value);
+    const speakers = [...new Set(lines.map(l => l.speaker))];
+    const sel = $("roleSelect");
+    const prev = sel.value;
+    sel.innerHTML = speakers.length
+      ? speakers.map(s => `<option ${s === prev ? "selected" : ""}>${esc(s)}</option>`).join("")
+      : `<option value="">— paste a script first —</option>`;
+  }
+  $("scriptInput").addEventListener("input", refreshRoles);
+
+  function populateVoices() {
+    const sel = $("voiceSelect");
+    const vs = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+    sel.innerHTML = `<option value="">Default</option>` + vs.map(v => `<option value="${esc(v.voiceURI)}">${esc(v.name)}</option>`).join("");
+  }
+  populateVoices();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) window.speechSynthesis.onvoiceschanged = populateVoices;
+
+  $("startBtn").addEventListener("click", () => {
+    const lines = parseScript($("scriptInput").value);
+    const role = $("roleSelect").value;
+    $("setupErr").textContent = "";
+    if (lines.length < 2) { $("setupErr").textContent = "Need at least two lines in NAME: text format."; return; }
+    if (!role) { $("setupErr").textContent = "Choose which part you're reading."; return; }
+    if (!SR) { $("setupErr").textContent = "This browser doesn't support speech recognition. On iPhone, use Safari."; return; }
+    S.lines = lines; S.myRole = role;
+    S.threshold = 1; // exact match required
+    S.rate = Math.min(1.5, Math.max(0.5, parseFloat($("rateInput").value || "0.95")));
+    S.voiceURI = $("voiceSelect").value;
+    S.idx = 0; S.results = []; S.attempts = {};
+    show("scr-run");
+    // iOS requires a user-gesture-initiated utterance to unlock audio; prime it silently
+    const prime = new SpeechSynthesisUtterance(" "); prime.volume = 0; window.speechSynthesis.speak(prime);
+    setCue("off", "Ready");
+    setStatus("Tap Start to begin.");
+    renderPage("");
+    $("mainBtn").textContent = "Start";
+    progressLabel();
+  });
+
+  $("mainBtn").addEventListener("click", () => {
+    if (S.phase === "idle" || S.phase === "done") { S.phase = "running"; advance(); return; }
+    if (S.phase === "partner") { window.speechSynthesis.cancel(); S.speaking = false; S.idx++; advance(); return; }
+    if (S.phase === "listening") { gradeMyLine(); return; }
+    if (S.phase === "review") {
+      const a = S.attempts[S.idx];
+      if (a && a.best === 100) recordAndNext(); else retryLine();
+    }
+  });
+  $("promptBtn").addEventListener("click", givePrompt);
+  $("retryBtn").addEventListener("click", retryLine);
+  $("skipBtn").addEventListener("click", recordAndNext);
+  $("endBtn").addEventListener("click", finishSession);
+  $("againBtn").addEventListener("click", () => { S.idx = 0; S.results = []; S.attempts = {}; show("scr-run"); S.phase = "idle"; setCue("off", "Ready"); setStatus("Tap Start to begin."); renderPage(""); $("mainBtn").textContent = "Start"; progressLabel(); });
+  $("backToSetupBtn").addEventListener("click", () => { show("scr-setup"); });
+
+  /* ====================== STORAGE ====================== */
+  const KEY = "linerunner.scripts.v1";
+  $("saveBtn").addEventListener("click", () => {
+    const text = $("scriptInput").value.trim();
+    if (!text) { $("setupErr").textContent = "Nothing to save."; return; }
+    const name = prompt("Name this script:");
+    if (!name) return;
+    const store = JSON.parse(localStorage.getItem(KEY) || "{}");
+    store[name] = { text, role: $("roleSelect").value, saved: Date.now() };
+    localStorage.setItem(KEY, JSON.stringify(store));
+    $("setupErr").textContent = "";
+    setTimeout(() => alert(`Saved "${name}" on this device.`), 50);
+  });
+  $("loadBtn").addEventListener("click", () => {
+    const store = JSON.parse(localStorage.getItem(KEY) || "{}");
+    const names = Object.keys(store);
+    if (!names.length) { $("setupErr").textContent = "No saved scripts on this device."; return; }
+    const pick = prompt("Saved scripts:\n" + names.map((n, i) => `${i + 1}. ${n}`).join("\n") + "\n\nEnter a number:");
+    const n = names[parseInt(pick, 10) - 1];
+    if (!n) return;
+    $("scriptInput").value = store[n].text;
+    refreshRoles();
+    if (store[n].role) $("roleSelect").value = store[n].role;
+    $("setupErr").textContent = "";
+  });
+  $("wipeBtn").addEventListener("click", () => {
+    if (confirm("Erase all saved scripts and settings from this device? This cannot be undone.")) {
+      localStorage.removeItem(KEY);
+      $("scriptInput").value = "";
+      refreshRoles();
+      alert("All LineRunner data wiped from this device.");
+    }
+  });
+})();
+</script>
+</body>
+</html>
